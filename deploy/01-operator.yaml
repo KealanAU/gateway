@@ -143,6 +143,9 @@ spec:
           image: ghcr.io/varnish/gateway-operator:latest
           args:
             - --leader-elect=true
+          env:
+            - name: GATEWAY_IMAGE
+              value: ghcr.io/varnish/gateway-chaperone:latest
           ports:
             - name: metrics
               containerPort: 8080
