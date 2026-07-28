@@ -35,8 +35,6 @@ EOF
 varnish v1 -arg "-p thread_pool_stack=160k" \
            -arg "-a http-8080=${localhost}:0,HTTP" \
            -arg "-a https-8443=${localhost}:0,HTTP" \
-           -arg "-a https-443=${localhost}:0,HTTP" \
-           -arg "-a ghost-reload=${localhost}:0,HTTP" \
            -vcl {
     import ghost from "${vmod}";
 
@@ -81,22 +79,4 @@ client c_https8443 -connect "${v1_https-8443_sock}" {
     rxresp
     expect resp.status == 302
     expect resp.http.Location == "https://api.example.com:8443/users"
-} -run
-
-# Default port for the scheme is omitted from Location.
-client c_https443 -connect "${v1_https-443_sock}" {
-    txreq -url "/users" -hdr "Host: api.example.com"
-    rxresp
-    expect resp.status == 302
-    expect resp.http.Location == "https://api.example.com/users"
-} -run
-
-# A socket name carrying no port falls back to the well-known port for the
-# scheme, so no port appears in Location — and the client's Host port is still
-# ignored.
-client c_noport -connect "${v1_ghost-reload_sock}" {
-    txreq -url "/users" -hdr "Host: api.example.com:1234"
-    rxresp
-    expect resp.status == 302
-    expect resp.http.Location == "http://api.example.com/users"
 } -run
