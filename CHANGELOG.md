@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **RequestRedirect: redirect port when the scheme is unchanged.** A
+  `requestRedirect` filter that set `scheme` without `port` only substituted the
+  scheme's well-known port when the redirect scheme differed from the request
+  scheme. The Gateway API spec assigns the well-known port (http → 80,
+  https → 443) for any non-empty redirect scheme. On a listener bound to a
+  non-standard port, `scheme: http` with no `port` emitted
+  `http://example.org:8080/` instead of `http://example.org/`. A redirect
+  scheme with no well-known port now falls back to the listener port, as the
+  spec recommends. The conformance suite does not exercise this case.
+
 ## [v0.23.0 - 2026-07-24]
 
 ### Added
