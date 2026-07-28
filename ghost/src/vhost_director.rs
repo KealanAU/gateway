@@ -16,7 +16,7 @@ use crate::config::RouteFilters;
 use crate::director::{
     strip_port, BypassHeaderCompiled, PathMatchCompiled, RouteEntry, WeightedBackendGroup,
 };
-use crate::redirect_backend::{default_port, RedirectConfig};
+use crate::redirect_backend::{well_known_port, RedirectConfig};
 use crate::stats::VhostStats;
 use crate::sync_wrapper::SendSyncBackendRef;
 
@@ -296,7 +296,9 @@ impl VhostDirector {
                 ));
 
                 let scheme = listener_scheme(listener);
-                let port = listener_port(listener).unwrap_or(default_port(scheme));
+                let port = listener_port(listener)
+                    .or_else(|| well_known_port(scheme))
+                    .unwrap_or(80);
                 let request_hostname = {
                     let host_header = http
                         .header("Host")

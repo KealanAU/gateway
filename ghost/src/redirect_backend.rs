@@ -109,19 +109,13 @@ pub fn build_location(config: &RedirectConfig) -> Result<String, VclError> {
         .as_deref()
         .unwrap_or(&config.original_hostname);
 
-    let redirect_scheme_differs = config
+    // Gateway API HTTPRequestRedirectFilter.port: an explicit port wins, else a
+    // non-empty redirect scheme takes its well-known port, else the listener's.
+    let port = config
         .filter
-        .scheme
-        .as_deref()
-        .is_some_and(|s| s != config.listener_scheme);
-
-    let port = if let Some(explicit_port) = config.filter.port {
-        explicit_port
-    } else if redirect_scheme_differs {
-        default_port(scheme)
-    } else {
-        config.listener_port
-    };
+        .port
+        .or_else(|| config.filter.scheme.as_deref().and_then(well_known_port))
+        .unwrap_or(config.listener_port);
 
     // Rewrite path if specified
     let path = rewrite_path(
@@ -149,17 +143,17 @@ pub fn build_location(config: &RedirectConfig) -> Result<String, VclError> {
     Ok(location)
 }
 
-/// Well-known port for a URL scheme, per the Gateway API redirect rules.
-pub(crate) fn default_port(scheme: &str) -> u16 {
-    if scheme == "https" {
-        443
-    } else {
-        80
+/// Well-known port for a URL scheme, or None for a scheme that has none.
+pub(crate) fn well_known_port(scheme: &str) -> Option<u16> {
+    match scheme {
+        "http" => Some(80),
+        "https" => Some(443),
+        _ => None,
     }
 }
 
 fn should_omit_port(scheme: &str, port: u16) -> bool {
-    port == default_port(scheme)
+    well_known_port(scheme) == Some(port)
 }
 
 fn rewrite_path(
@@ -358,6 +352,51 @@ mod tests {
             "",
         );
         assert_eq!(build_location(&config).unwrap(), "https://example.org/path");
+    }
+
+    #[test]
+    fn test_build_location_same_scheme_uses_well_known_port() {
+        // Spec: a non-empty redirect scheme gets that scheme's well-known port
+        // even when it equals the original scheme. The Gateway API conformance
+        // suite has no scheme-http-and-port-nil case on its 8080 listener, so
+        // this case is only covered here.
+        let config = make_config(
+            make_filter(Some("http"), None, None, None, None, 302),
+            "http",
+            "example.org",
+            8080,
+            "/",
+            "",
+        );
+
+        let location = build_location(&config).unwrap();
+        assert_eq!(location, "http://example.org/");
+
+        // Same for https on a non-well-known TLS listener port.
+        let config = make_config(
+            make_filter(Some("https"), None, None, None, None, 302),
+            "https",
+            "example.org",
+            8443,
+            "/",
+            "",
+        );
+
+        let location = build_location(&config).unwrap();
+        assert_eq!(location, "https://example.org/");
+
+        // No redirect scheme - the listener port is preserved.
+        let config = make_config(
+            make_filter(None, None, None, None, None, 302),
+            "http",
+            "example.org",
+            8080,
+            "/",
+            "",
+        );
+
+        let location = build_location(&config).unwrap();
+        assert_eq!(location, "http://example.org:8080/");
     }
 
     #[test]
