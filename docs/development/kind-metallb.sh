@@ -24,10 +24,13 @@ if [ -z "$SUBNET" ]; then
   exit 1
 fi
 
-# Extract first two octets (works for /16 networks kind typically creates)
-PREFIX=$(echo "$SUBNET" | cut -d. -f1-2)
-RANGE_START="${PREFIX}.255.200"
-RANGE_END="${PREFIX}.255.250"
+# Pool: .200-.250, in x.y.255 for the /16 kind usually creates — clear of
+# Docker IPAM, which allocates upward from the bottom — or the subnet's own
+# third octet for the /24 OrbStack creates, where .255 would be off-network
+# and the LoadBalancer IPs unroutable.
+PREFIX=$(awk -F'[./]' '{print $1 "." $2 "." ($5 <= 16 ? 255 : $3)}' <<<"$SUBNET")
+RANGE_START="${PREFIX}.200"
+RANGE_END="${PREFIX}.250"
 
 echo "Configuring MetalLB address pool: ${RANGE_START}-${RANGE_END}"
 kubectl apply -f - <<EOF
