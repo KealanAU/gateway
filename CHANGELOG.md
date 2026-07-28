@@ -7,8 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`GatewayPort8080` conformance support (#30).** The multi-listener
+  architecture already mapped listener ports straight through to Service and
+  container ports, so the feature is now declared in the conformance suite.
+  This also enables the `HTTPRouteRedirectPortAndScheme` tests.
+
 ### Fixed
 
+- **Redirect port now derives from the Gateway listener, not the `Host`
+  header.** A `RequestRedirect` filter with no `scheme` and no `port` was
+  building the `Location` port from the client's `Host` header, so a request
+  to a listener on a non-default port with a portless `Host` redirected to
+  port 80/443. The listener socket name is now authoritative, per spec
+  ("if redirect scheme is empty, the redirect port MUST be the Gateway
+  Listener port"). Behaviour change for deployments that port-translate in
+  front of the Gateway (external LB, gateway-behind-gateway): a portless
+  redirect now emits the listener's port rather than the client-facing one.
+  Set `requestRedirect.port` explicitly to pin the old value.
+- **`kind-metallb.sh` address pool is now inside the kind subnet.** The pool
+  was derived from the first two octets and hardcoded `.255.x`, assuming the
+  /16 kind usually creates; on a /24 (OrbStack) that produced an off-network
+  pool and unroutable LoadBalancer IPs, so every traffic-based conformance
+  test timed out locally.
 - **RequestRedirect: redirect port when the scheme is unchanged.** A
   `requestRedirect` filter that set `scheme` without `port` only substituted the
   scheme's well-known port when the redirect scheme differed from the request

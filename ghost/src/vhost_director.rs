@@ -13,8 +13,10 @@ use varnish::vcl::{
 
 use crate::backend_pool::BackendPool;
 use crate::config::RouteFilters;
-use crate::director::{BypassHeaderCompiled, PathMatchCompiled, RouteEntry, WeightedBackendGroup};
-use crate::redirect_backend::RedirectConfig;
+use crate::director::{
+    strip_port, BypassHeaderCompiled, PathMatchCompiled, RouteEntry, WeightedBackendGroup,
+};
+use crate::redirect_backend::{well_known_port, RedirectConfig};
 use crate::stats::VhostStats;
 use crate::sync_wrapper::SendSyncBackendRef;
 
@@ -293,8 +295,11 @@ impl VhostDirector {
                     "Applying request redirect filter".to_string(),
                 ));
 
-                // Extract original request components
-                let (original_scheme, original_hostname, original_port) = {
+                let scheme = listener_scheme(listener);
+                let port = listener_port(listener)
+                    .or_else(|| well_known_port(scheme))
+                    .unwrap_or(80);
+                let request_hostname = {
                     let host_header = http
                         .header("Host")
                         .and_then(|h| match h {
@@ -302,19 +307,7 @@ impl VhostDirector {
                             StrOrBytes::Bytes(b) => std::str::from_utf8(b).ok(),
                         })
                         .unwrap_or("localhost");
-                    let (hostname, port_opt) = parse_host_and_port(host_header);
-
-                    // Determine scheme from listener name (authoritative)
-                    // Listeners are named "http-{port}" or "https-{port}"
-                    let scheme = if listener.is_some_and(|l| l.starts_with("https")) {
-                        "https"
-                    } else {
-                        "http"
-                    };
-
-                    let port = port_opt.unwrap_or_else(|| if scheme == "https" { 443 } else { 80 });
-
-                    (scheme.to_string(), hostname.to_string(), port)
+                    strip_port(host_header).to_string()
                 };
 
                 // Extract matched prefix string (for ReplacePrefixMatch logic)
@@ -326,9 +319,9 @@ impl VhostDirector {
 
                 let redirect_config = RedirectConfig {
                     filter: redirect_filter.clone(),
-                    original_scheme,
-                    original_hostname,
-                    original_port,
+                    listener_scheme: scheme.to_string(),
+                    listener_port: port,
+                    original_hostname: request_hostname,
                     original_path: path_owned.clone(),
                     original_query: query_string_owned.clone().unwrap_or_default(),
                     matched_path: matched_path_str,
@@ -997,34 +990,25 @@ pub(crate) fn replace_first_segment_heuristic(path: &str, new_prefix: &str) -> S
     }
 }
 
-/// Parse hostname and port from Host header
+/// Extract the scheme from a Varnish socket name ("http-80", "https-8443").
 ///
-/// Handles both regular `host:port` format and IPv6 `[::1]:port` format.
-/// Returns (hostname, Some(port)) or (hostname, None) if no port specified.
-fn parse_host_and_port(host_header: &str) -> (&str, Option<u16>) {
-    // Handle IPv6: [::1]:8080 or [::1]
-    if host_header.starts_with('[') {
-        if let Some(bracket_end) = host_header.find(']') {
-            let host = &host_header[0..=bracket_end];
-            let port_part = &host_header[bracket_end + 1..];
-            if let Some(port_str) = port_part.strip_prefix(':') {
-                let port = port_str.parse::<u16>().ok();
-                return (host, port);
-            }
-            return (host, None);
-        }
+/// The listener is authoritative for the redirect scheme and port — the Gateway
+/// API defaults both to the Gateway Listener, never to the client's Host header.
+fn listener_scheme(listener: Option<&str>) -> &'static str {
+    if listener.is_some_and(|l| l.starts_with("https")) {
+        "https"
+    } else {
+        "http"
     }
+}
 
-    // Handle regular host:port or just host
-    if let Some(colon_pos) = host_header.rfind(':') {
-        let host = &host_header[..colon_pos];
-        let port_str = &host_header[colon_pos + 1..];
-        if let Ok(port) = port_str.parse::<u16>() {
-            return (host, Some(port));
-        }
-    }
-
-    (host_header, None)
+/// Extract the listener port from a Varnish socket name ("http-80", "https-8443").
+///
+/// Returns None for sockets that don't carry a port (e.g. "ghost-reload").
+fn listener_port(listener: Option<&str>) -> Option<u16> {
+    listener
+        .and_then(|l| l.rsplit_once('-'))
+        .and_then(|(_, port)| port.parse::<u16>().ok())
 }
 
 fn store_filter_context(
@@ -1292,6 +1276,15 @@ mod tests {
             replace_first_segment_heuristic("/v1/users", "/v2/"),
             "/v2/users"
         );
+    }
+
+    #[test]
+    fn test_listener_port() {
+        assert_eq!(listener_port(Some("http-80")), Some(80));
+        assert_eq!(listener_port(Some("http-8080")), Some(8080));
+        assert_eq!(listener_port(Some("https-8443")), Some(8443));
+        assert_eq!(listener_port(Some("ghost-reload")), None);
+        assert_eq!(listener_port(None), None);
     }
 
     #[test]

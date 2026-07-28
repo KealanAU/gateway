@@ -11,10 +11,11 @@ pub struct RedirectBackend;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RedirectConfig {
     pub filter: RequestRedirectFilter,
+    // Gateway listener the request arrived on
+    pub listener_scheme: String,
+    pub listener_port: u16,
     // Original request components
-    pub original_scheme: String,
     pub original_hostname: String,
-    pub original_port: u16,
     pub original_path: String,
     pub original_query: String,
     // Matched path for prefix replacement (string value of matched prefix)
@@ -101,31 +102,20 @@ pub fn build_location(config: &RedirectConfig) -> Result<String, VclError> {
         .filter
         .scheme
         .as_deref()
-        .unwrap_or(&config.original_scheme);
+        .unwrap_or(&config.listener_scheme);
     let hostname = config
         .filter
         .hostname
         .as_deref()
         .unwrap_or(&config.original_hostname);
 
-    // Port handling per the Gateway API spec for HTTPRequestRedirectFilter.port:
-    //   - explicit port wins
-    //   - otherwise, if the redirect scheme is non-empty, use that scheme's
-    //     well-known port (http -> 80, https -> 443), regardless of whether it
-    //     matches the original request scheme
-    //   - a redirect scheme with no well-known port, or no redirect scheme at
-    //     all, falls back to the Gateway listener port
-    let port = if let Some(explicit_port) = config.filter.port {
-        explicit_port
-    } else {
-        match config.filter.scheme.as_deref() {
-            Some("http") => 80,
-            Some("https") => 443,
-            // Scheme with no well-known port, or no scheme specified - keep
-            // the listener port the request arrived on.
-            _ => config.original_port,
-        }
-    };
+    // Gateway API HTTPRequestRedirectFilter.port: an explicit port wins, else a
+    // non-empty redirect scheme takes its well-known port, else the listener's.
+    let port = config
+        .filter
+        .port
+        .or_else(|| config.filter.scheme.as_deref().and_then(well_known_port))
+        .unwrap_or(config.listener_port);
 
     // Rewrite path if specified
     let path = rewrite_path(
@@ -137,7 +127,6 @@ pub fn build_location(config: &RedirectConfig) -> Result<String, VclError> {
     // Construct Location: scheme://hostname[:port]/path[?query]
     let mut location = format!("{}://{}", scheme, hostname);
 
-    // Include port unless it's a default port
     if !should_omit_port(scheme, port) {
         location.push_str(&format!(":{}", port));
     }
@@ -154,8 +143,17 @@ pub fn build_location(config: &RedirectConfig) -> Result<String, VclError> {
     Ok(location)
 }
 
+/// Well-known port for a URL scheme, or None for a scheme that has none.
+pub(crate) fn well_known_port(scheme: &str) -> Option<u16> {
+    match scheme {
+        "http" => Some(80),
+        "https" => Some(443),
+        _ => None,
+    }
+}
+
 fn should_omit_port(scheme: &str, port: u16) -> bool {
-    (scheme == "http" && port == 80) || (scheme == "https" && port == 443)
+    well_known_port(scheme) == Some(port)
 }
 
 fn rewrite_path(
@@ -222,17 +220,17 @@ mod tests {
 
     fn make_config(
         filter: RequestRedirectFilter,
-        original_scheme: &str,
+        listener_scheme: &str,
         original_hostname: &str,
-        original_port: u16,
+        listener_port: u16,
         original_path: &str,
         original_query: &str,
     ) -> RedirectConfig {
         RedirectConfig {
             filter,
-            original_scheme: original_scheme.to_string(),
+            listener_scheme: listener_scheme.to_string(),
+            listener_port,
             original_hostname: original_hostname.to_string(),
-            original_port,
             original_path: original_path.to_string(),
             original_query: original_query.to_string(),
             matched_path: None,
@@ -346,7 +344,7 @@ mod tests {
         let location = build_location(&config).unwrap();
         assert_eq!(location, "https://example.org/");
 
-        // No redirect scheme - the listener port is preserved.
+        // No redirect scheme - the listener port is preserved (GatewayPort8080, #30).
         let config = make_config(
             make_filter(None, None, None, None, None, 302),
             "http",
