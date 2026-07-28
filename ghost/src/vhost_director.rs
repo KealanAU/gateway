@@ -16,7 +16,7 @@ use crate::config::RouteFilters;
 use crate::director::{
     strip_port, BypassHeaderCompiled, PathMatchCompiled, RouteEntry, WeightedBackendGroup,
 };
-use crate::redirect_backend::RedirectConfig;
+use crate::redirect_backend::{default_port, RedirectConfig};
 use crate::stats::VhostStats;
 use crate::sync_wrapper::SendSyncBackendRef;
 
@@ -295,8 +295,9 @@ impl VhostDirector {
                     "Applying request redirect filter".to_string(),
                 ));
 
-                // Extract original request components
-                let (original_scheme, original_hostname, original_port) = {
+                let scheme = listener_scheme(listener);
+                let port = listener_port(listener).unwrap_or(default_port(scheme));
+                let request_hostname = {
                     let host_header = http
                         .header("Host")
                         .and_then(|h| match h {
@@ -304,23 +305,7 @@ impl VhostDirector {
                             StrOrBytes::Bytes(b) => std::str::from_utf8(b).ok(),
                         })
                         .unwrap_or("localhost");
-                    let hostname = strip_port(host_header);
-
-                    // Determine scheme from listener name (authoritative)
-                    // Listeners are named "http-{port}" or "https-{port}"
-                    let scheme = if listener.is_some_and(|l| l.starts_with("https")) {
-                        "https"
-                    } else {
-                        "http"
-                    };
-
-                    // The listener port is authoritative for the redirect port: the
-                    // Gateway API spec defaults a portless/schemeless redirect to the
-                    // Gateway Listener port, not whatever the client put in Host.
-                    let port =
-                        listener_port(listener).unwrap_or(if scheme == "https" { 443 } else { 80 });
-
-                    (scheme.to_string(), hostname.to_string(), port)
+                    strip_port(host_header).to_string()
                 };
 
                 // Extract matched prefix string (for ReplacePrefixMatch logic)
@@ -332,9 +317,9 @@ impl VhostDirector {
 
                 let redirect_config = RedirectConfig {
                     filter: redirect_filter.clone(),
-                    original_scheme,
-                    original_hostname,
-                    original_port,
+                    listener_scheme: scheme.to_string(),
+                    listener_port: port,
+                    original_hostname: request_hostname,
                     original_path: path_owned.clone(),
                     original_query: query_string_owned.clone().unwrap_or_default(),
                     matched_path: matched_path_str,
@@ -1000,6 +985,18 @@ pub(crate) fn replace_first_segment_heuristic(path: &str, new_prefix: &str) -> S
         }
     } else {
         new_prefix.to_string()
+    }
+}
+
+/// Extract the scheme from a Varnish socket name ("http-80", "https-8443").
+///
+/// The listener is authoritative for the redirect scheme and port — the Gateway
+/// API defaults both to the Gateway Listener, never to the client's Host header.
+fn listener_scheme(listener: Option<&str>) -> &'static str {
+    if listener.is_some_and(|l| l.starts_with("https")) {
+        "https"
+    } else {
+        "http"
     }
 }
 

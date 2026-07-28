@@ -24,13 +24,19 @@ if [ -z "$SUBNET" ]; then
   exit 1
 fi
 
-# Pool: .200-.250, in x.y.255 for the /16 kind usually creates — clear of
-# Docker IPAM, which allocates upward from the bottom — or the subnet's own
-# third octet for the /24 OrbStack creates, where .255 would be off-network
-# and the LoadBalancer IPs unroutable.
-PREFIX=$(awk -F'[./]' '{print $1 "." $2 "." ($5 <= 16 ? 255 : $3)}' <<<"$SUBNET")
-RANGE_START="${PREFIX}.200"
-RANGE_END="${PREFIX}.250"
+IFS='./' read -r OCTET1 OCTET2 OCTET3 _ PREFIX_LEN <<<"$SUBNET"
+
+# Docker IPAM allocates upward from the bottom of the subnet, so a /16 has room
+# to put the pool far out of its way. Anything narrower has to stay in the
+# subnet's own third octet or the addresses are off-network and unroutable.
+if [ "$PREFIX_LEN" -le 16 ]; then
+  POOL_OCTET3=255
+else
+  POOL_OCTET3=$OCTET3
+fi
+
+RANGE_START="${OCTET1}.${OCTET2}.${POOL_OCTET3}.200"
+RANGE_END="${OCTET1}.${OCTET2}.${POOL_OCTET3}.250"
 
 echo "Configuring MetalLB address pool: ${RANGE_START}-${RANGE_END}"
 kubectl apply -f - <<EOF

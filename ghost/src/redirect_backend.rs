@@ -11,10 +11,11 @@ pub struct RedirectBackend;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RedirectConfig {
     pub filter: RequestRedirectFilter,
+    // Gateway listener the request arrived on
+    pub listener_scheme: String,
+    pub listener_port: u16,
     // Original request components
-    pub original_scheme: String,
     pub original_hostname: String,
-    pub original_port: u16,
     pub original_path: String,
     pub original_query: String,
     // Matched path for prefix replacement (string value of matched prefix)
@@ -101,28 +102,25 @@ pub fn build_location(config: &RedirectConfig) -> Result<String, VclError> {
         .filter
         .scheme
         .as_deref()
-        .unwrap_or(&config.original_scheme);
+        .unwrap_or(&config.listener_scheme);
     let hostname = config
         .filter
         .hostname
         .as_deref()
         .unwrap_or(&config.original_hostname);
 
-    // Port handling: if scheme changes without explicit port, use default port for new scheme
+    let redirect_scheme_differs = config
+        .filter
+        .scheme
+        .as_deref()
+        .is_some_and(|s| s != config.listener_scheme);
+
     let port = if let Some(explicit_port) = config.filter.port {
         explicit_port
-    } else if config.filter.scheme.is_some()
-        && config.filter.scheme.as_deref() != Some(&config.original_scheme)
-    {
-        // Scheme changed without explicit port - use default for new scheme
-        if scheme == "https" {
-            443
-        } else {
-            80
-        }
+    } else if redirect_scheme_differs {
+        default_port(scheme)
     } else {
-        // No scheme change or scheme not specified - keep original port
-        config.original_port
+        config.listener_port
     };
 
     // Rewrite path if specified
@@ -135,7 +133,6 @@ pub fn build_location(config: &RedirectConfig) -> Result<String, VclError> {
     // Construct Location: scheme://hostname[:port]/path[?query]
     let mut location = format!("{}://{}", scheme, hostname);
 
-    // Include port unless it's a default port
     if !should_omit_port(scheme, port) {
         location.push_str(&format!(":{}", port));
     }
@@ -152,8 +149,17 @@ pub fn build_location(config: &RedirectConfig) -> Result<String, VclError> {
     Ok(location)
 }
 
+/// Well-known port for a URL scheme, per the Gateway API redirect rules.
+pub(crate) fn default_port(scheme: &str) -> u16 {
+    if scheme == "https" {
+        443
+    } else {
+        80
+    }
+}
+
 fn should_omit_port(scheme: &str, port: u16) -> bool {
-    (scheme == "http" && port == 80) || (scheme == "https" && port == 443)
+    port == default_port(scheme)
 }
 
 fn rewrite_path(
@@ -220,17 +226,17 @@ mod tests {
 
     fn make_config(
         filter: RequestRedirectFilter,
-        original_scheme: &str,
+        listener_scheme: &str,
         original_hostname: &str,
-        original_port: u16,
+        listener_port: u16,
         original_path: &str,
         original_query: &str,
     ) -> RedirectConfig {
         RedirectConfig {
             filter,
-            original_scheme: original_scheme.to_string(),
+            listener_scheme: listener_scheme.to_string(),
+            listener_port,
             original_hostname: original_hostname.to_string(),
-            original_port,
             original_path: original_path.to_string(),
             original_query: original_query.to_string(),
             matched_path: None,
