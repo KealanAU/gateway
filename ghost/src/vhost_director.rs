@@ -13,7 +13,9 @@ use varnish::vcl::{
 
 use crate::backend_pool::BackendPool;
 use crate::config::RouteFilters;
-use crate::director::{BypassHeaderCompiled, PathMatchCompiled, RouteEntry, WeightedBackendGroup};
+use crate::director::{
+    strip_port, BypassHeaderCompiled, PathMatchCompiled, RouteEntry, WeightedBackendGroup,
+};
 use crate::redirect_backend::RedirectConfig;
 use crate::stats::VhostStats;
 use crate::sync_wrapper::SendSyncBackendRef;
@@ -998,14 +1000,6 @@ pub(crate) fn replace_first_segment_heuristic(path: &str, new_prefix: &str) -> S
         }
     } else {
         new_prefix.to_string()
-    }
-}
-
-/// Strip the port from a Host header, handling `host:port` and IPv6 `[::1]:port`.
-fn strip_port(host_header: &str) -> &str {
-    match host_header.rsplit_once(':') {
-        Some((host, port)) if port.parse::<u16>().is_ok() => host,
-        _ => host_header,
     }
 }
 

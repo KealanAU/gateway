@@ -769,7 +769,7 @@ fn get_host_header(http: &HttpHeaders) -> Option<String> {
 }
 
 /// Strip port from a host string, handling IPv6 bracketed addresses.
-fn strip_port(host: &str) -> &str {
+pub(crate) fn strip_port(host: &str) -> &str {
     if host.starts_with('[') {
         // IPv6 bracketed: [::1]:8080 -> [::1]
         match host.find(']') {
