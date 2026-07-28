@@ -302,7 +302,7 @@ impl VhostDirector {
                             StrOrBytes::Bytes(b) => std::str::from_utf8(b).ok(),
                         })
                         .unwrap_or("localhost");
-                    let (hostname, port_opt) = parse_host_and_port(host_header);
+                    let hostname = strip_port(host_header);
 
                     // Determine scheme from listener name (authoritative)
                     // Listeners are named "http-{port}" or "https-{port}"
@@ -315,9 +315,8 @@ impl VhostDirector {
                     // The listener port is authoritative for the redirect port: the
                     // Gateway API spec defaults a portless/schemeless redirect to the
                     // Gateway Listener port, not whatever the client put in Host.
-                    let port = listener_port(listener)
-                        .or(port_opt)
-                        .unwrap_or(if scheme == "https" { 443 } else { 80 });
+                    let port =
+                        listener_port(listener).unwrap_or(if scheme == "https" { 443 } else { 80 });
 
                     (scheme.to_string(), hostname.to_string(), port)
                 };
@@ -1002,34 +1001,12 @@ pub(crate) fn replace_first_segment_heuristic(path: &str, new_prefix: &str) -> S
     }
 }
 
-/// Parse hostname and port from Host header
-///
-/// Handles both regular `host:port` format and IPv6 `[::1]:port` format.
-/// Returns (hostname, Some(port)) or (hostname, None) if no port specified.
-fn parse_host_and_port(host_header: &str) -> (&str, Option<u16>) {
-    // Handle IPv6: [::1]:8080 or [::1]
-    if host_header.starts_with('[') {
-        if let Some(bracket_end) = host_header.find(']') {
-            let host = &host_header[0..=bracket_end];
-            let port_part = &host_header[bracket_end + 1..];
-            if let Some(port_str) = port_part.strip_prefix(':') {
-                let port = port_str.parse::<u16>().ok();
-                return (host, port);
-            }
-            return (host, None);
-        }
+/// Strip the port from a Host header, handling `host:port` and IPv6 `[::1]:port`.
+fn strip_port(host_header: &str) -> &str {
+    match host_header.rsplit_once(':') {
+        Some((host, port)) if port.parse::<u16>().is_ok() => host,
+        _ => host_header,
     }
-
-    // Handle regular host:port or just host
-    if let Some(colon_pos) = host_header.rfind(':') {
-        let host = &host_header[..colon_pos];
-        let port_str = &host_header[colon_pos + 1..];
-        if let Ok(port) = port_str.parse::<u16>() {
-            return (host, Some(port));
-        }
-    }
-
-    (host_header, None)
 }
 
 /// Extract the listener port from a Varnish socket name ("http-80", "https-8443").
