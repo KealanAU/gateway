@@ -26,6 +26,7 @@ func TestConformance(t *testing.T) {
 		features.SupportReferenceGrant,
 		features.SupportHTTPRoute,
 		// Extended
+		features.SupportGatewayPort8080,
 		features.SupportHTTPRouteQueryParamMatching,
 		features.SupportHTTPRouteMethodMatching,
 		features.SupportHTTPRouteResponseHeaderModification,

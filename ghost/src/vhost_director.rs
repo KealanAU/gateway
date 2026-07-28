@@ -312,7 +312,12 @@ impl VhostDirector {
                         "http"
                     };
 
-                    let port = port_opt.unwrap_or_else(|| if scheme == "https" { 443 } else { 80 });
+                    // The listener port is authoritative for the redirect port: the
+                    // Gateway API spec defaults a portless/schemeless redirect to the
+                    // Gateway Listener port, not whatever the client put in Host.
+                    let port = listener_port(listener)
+                        .or(port_opt)
+                        .unwrap_or(if scheme == "https" { 443 } else { 80 });
 
                     (scheme.to_string(), hostname.to_string(), port)
                 };
@@ -1027,6 +1032,15 @@ fn parse_host_and_port(host_header: &str) -> (&str, Option<u16>) {
     (host_header, None)
 }
 
+/// Extract the listener port from a Varnish socket name ("http-80", "https-8443").
+///
+/// Returns None for sockets that don't carry a port (e.g. "ghost-reload").
+fn listener_port(listener: Option<&str>) -> Option<u16> {
+    listener
+        .and_then(|l| l.rsplit_once('-'))
+        .and_then(|(_, port)| port.parse::<u16>().ok())
+}
+
 fn store_filter_context(
     http: &mut HttpHeaders,
     filters: &Arc<RouteFilters>,
@@ -1292,6 +1306,15 @@ mod tests {
             replace_first_segment_heuristic("/v1/users", "/v2/"),
             "/v2/users"
         );
+    }
+
+    #[test]
+    fn test_listener_port() {
+        assert_eq!(listener_port(Some("http-80")), Some(80));
+        assert_eq!(listener_port(Some("http-8080")), Some(8080));
+        assert_eq!(listener_port(Some("https-8443")), Some(8443));
+        assert_eq!(listener_port(Some("ghost-reload")), None);
+        assert_eq!(listener_port(None), None);
     }
 
     #[test]
