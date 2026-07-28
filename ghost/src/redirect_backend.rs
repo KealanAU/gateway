@@ -314,6 +314,47 @@ mod tests {
     }
 
     #[test]
+    fn test_build_location_keeps_listener_port() {
+        // Neither scheme nor port on the filter: the Location keeps the port the
+        // request arrived on, which for a Gateway listener on 8080 means the
+        // redirect must carry :8080. Gateway API GatewayPort8080 (#30).
+        let config = make_config(
+            make_filter(None, Some("example.org"), None, None, None, 302),
+            "http",
+            "gw.internal",
+            8080,
+            "/path",
+            "",
+        );
+        assert_eq!(
+            build_location(&config).unwrap(),
+            "http://example.org:8080/path"
+        );
+
+        // An explicit filter port still overrides the listener port...
+        let config = make_config(
+            make_filter(None, Some("example.org"), Some(80), None, None, 302),
+            "http",
+            "gw.internal",
+            8080,
+            "/path",
+            "",
+        );
+        assert_eq!(build_location(&config).unwrap(), "http://example.org/path");
+
+        // ...and so does a scheme change, which resets to that scheme's port.
+        let config = make_config(
+            make_filter(Some("https"), Some("example.org"), None, None, None, 302),
+            "http",
+            "gw.internal",
+            8080,
+            "/path",
+            "",
+        );
+        assert_eq!(build_location(&config).unwrap(), "https://example.org/path");
+    }
+
+    #[test]
     fn test_build_location_path_rewrite_full() {
         let config = make_config(
             make_filter(None, None, None, Some("/new/path"), None, 301),
