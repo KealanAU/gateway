@@ -116,6 +116,10 @@ func mergeRoutesByMatchCriteria(routes []Route, endpoints ServiceEndpoints) []Ro
 		cachePolicy string // JSON serialization of CachePolicy
 		priority    int
 		ruleIndex   int
+		// Keyed for the same reason as cachePolicy: it is a per-route attribute
+		// that RouteBackends takes from the first route in the group, so merging
+		// routes with different timeouts would silently drop one.
+		backendTimeoutMs int
 	}
 
 	// NOTE: BackendTLS is intentionally NOT part of the merge key. Each BackendGroup
@@ -136,6 +140,8 @@ func mergeRoutesByMatchCriteria(routes []Route, endpoints ServiceEndpoints) []Ro
 			cachePolicy: serializeCachePolicy(route.CachePolicy),
 			priority:    route.Priority,
 			ruleIndex:   route.RuleIndex,
+
+			backendTimeoutMs: route.BackendTimeoutMs,
 		}
 		grouped[key] = append(grouped[key], route)
 	}
@@ -166,6 +172,8 @@ func mergeRoutesByMatchCriteria(routes []Route, endpoints ServiceEndpoints) []Ro
 			Priority:      key.priority,
 			RuleIndex:     key.ruleIndex,
 			CachePolicy:   firstRoute.CachePolicy,
+
+			BackendTimeoutMs: key.backendTimeoutMs,
 		})
 	}
 

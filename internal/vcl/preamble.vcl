@@ -29,6 +29,7 @@ sub vcl_recv {
     unset req.http.X-Ghost-Grace;
     unset req.http.X-Ghost-Keep;
     unset req.http.X-Ghost-Cache-Key-Extra;
+    unset req.http.X-Ghost-Timeout;
     unset req.http.X-Ghost-Filter-Context;
     unset req.http.X-Ghost-Redirect-Config;
     unset req.http.X-Ghost-Error;
@@ -107,6 +108,27 @@ sub vcl_backend_fetch {
     # because vcl_backend_response needs to read them. They are cleaned up
     # at the end of vcl_backend_response instead.
     unset bereq.http.X-Ghost-Pass;
+
+    # Per-route backend timeout (HTTPRoute timeouts.backendRequest). Ghost sets
+    # X-Ghost-Timeout in vcl_recv; backends are pooled by address:port so they
+    # cannot carry per-route timeouts themselves.
+    #
+    # The header is deliberately NOT unset here: it must survive the fetch so the
+    # postamble vcl_backend_error can tell a timed-out route apart from an
+    # ordinary 503. Same lifetime as the cache policy headers above.
+    #
+    # The std.duration() fallback is 60s (varnishd's first_byte_timeout default),
+    # never 0s: a malformed value must not become "time out immediately".
+    #
+    # between_bytes_timeout is set alongside first_byte_timeout because Gateway
+    # API scopes backendRequest to the complete response, not just its first
+    # byte. Varnish has no total-fetch cap, so this is the closest approximation.
+    # ponytail: bounds the gap between body bytes, not the total — a slow drip
+    # still streams forever, and long-lived SSE on a timed-out route will be cut.
+    if (bereq.http.X-Ghost-Timeout) {
+        set bereq.first_byte_timeout = std.duration(bereq.http.X-Ghost-Timeout, 60s);
+        set bereq.between_bytes_timeout = std.duration(bereq.http.X-Ghost-Timeout, 60s);
+    }
 }
 
 sub vcl_backend_response {
@@ -151,6 +173,7 @@ sub vcl_backend_response {
     unset bereq.http.X-Ghost-Forced-TTL;
     unset bereq.http.X-Ghost-Grace;
     unset bereq.http.X-Ghost-Keep;
+    unset bereq.http.X-Ghost-Timeout;
 }
 
 sub vcl_deliver {

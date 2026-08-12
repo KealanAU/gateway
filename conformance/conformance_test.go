@@ -38,6 +38,7 @@ func TestConformance(t *testing.T) {
 		features.SupportHTTPRoute308RedirectStatusCode,
 		features.SupportHTTPRouteHostRewrite,
 		features.SupportHTTPRoutePathRewrite,
+		features.SupportHTTPRouteBackendTimeout,
 		features.SupportGatewayHTTPListenerIsolation,
 		features.SupportHTTPRouteParentRefPort,
 		// BackendTLSPolicy: Varnish 9.0 does not expose a backend API field for

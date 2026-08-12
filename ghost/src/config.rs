@@ -228,6 +228,10 @@ pub struct Route {
     /// Cache policy from VarnishCachePolicy. None means pass-through (no caching).
     #[serde(default)]
     pub cache_policy: Option<CachePolicy>,
+    /// HTTPRoute `timeouts.backendRequest` in milliseconds. Absent means no
+    /// per-route timeout — varnishd's global defaults apply.
+    #[serde(default)]
+    pub backend_timeout_ms: Option<u32>,
 }
 
 /// All routing rules for a single hostname (e.g., "api.example.com").
