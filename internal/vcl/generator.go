@@ -157,7 +157,7 @@ func CollectHTTPRouteBackends(routes []gatewayv1.HTTPRoute, gateway *gatewayv1.G
 
 				// Timeouts are per-rule, so every route entry generated from this
 				// rule carries the same value.
-				timeoutMs := backendTimeoutMs(rule.Timeouts)
+				timeoutMs := routeTimeoutMs(rule.Timeouts)
 
 				// Process each match in the rule
 				if len(rule.Matches) == 0 {
@@ -449,24 +449,51 @@ func CollectHTTPRouteBackends(routes []gatewayv1.HTTPRoute, gateway *gatewayv1.G
 	return collectedRoutes
 }
 
-// backendTimeoutMs converts an HTTPRoute rule's timeouts.backendRequest into
-// milliseconds for routing.json. Returns 0 when the timeout is unset, "0s", or
-// unparseable, and 0 is serialized as absent.
+// routeTimeoutMs converts an HTTPRoute rule's timeouts into milliseconds for
+// routing.json. Returns 0 when no timeout applies, and 0 is serialized as absent.
 //
-// Gateway API defines "0s" as "disable the timeout". Varnish has no way to
-// uncap a fetch — first_byte_timeout/between_bytes_timeout always apply — so a
-// disabled route is emitted as absent and inherits varnishd's global defaults
-// rather than running unbounded. Documented in docs/reference/httproute-timeouts.md.
-func backendTimeoutMs(t *gatewayv1.HTTPRouteTimeouts) int {
-	if t == nil || t.BackendRequest == nil {
+// Both request and backendRequest map onto the same Varnish fetch timeouts, so
+// the tighter of the two wins. Gateway API scopes request to the entire client
+// request-response cycle, but Varnish has no total-request timeout — the clock
+// necessarily starts at the backend fetch, so request behaves as an alias for
+// backendRequest. Documented in docs/reference/httproute-timeouts.md.
+func routeTimeoutMs(t *gatewayv1.HTTPRouteTimeouts) int {
+	if t == nil {
+		return 0
+	}
+	// The spec requires backendRequest <= request, but a route that violates
+	// that must not end up with the looser of the two bounds.
+	return minNonZeroMs(durationMs(t.Request), durationMs(t.BackendRequest))
+}
+
+// durationMs parses a GEP-2257 duration into milliseconds. Returns 0 when unset,
+// unparseable, or "0s".
+//
+// Gateway API defines "0s" as "disable the timeout". Varnish has no way to uncap
+// a fetch — first_byte_timeout/between_bytes_timeout always apply — so a disabled
+// route is emitted as absent and inherits varnishd's global defaults rather than
+// running unbounded.
+func durationMs(d *gatewayv1.Duration) int {
+	if d == nil {
 		return 0
 	}
 	// GEP-2257 durations are a subset of time.ParseDuration's grammar.
-	d, err := time.ParseDuration(string(*t.BackendRequest))
-	if err != nil || d <= 0 {
+	parsed, err := time.ParseDuration(string(*d))
+	if err != nil || parsed <= 0 {
 		return 0
 	}
-	return int(d.Milliseconds())
+	return int(parsed.Milliseconds())
+}
+
+// minNonZeroMs returns the smaller of two timeouts, treating 0 as "unset".
+func minNonZeroMs(a, b int) int {
+	if a == 0 {
+		return b
+	}
+	if b == 0 {
+		return a
+	}
+	return min(a, b)
 }
 
 // filterValidBackends returns backend refs that have a valid Kind/Group and are not blocked.

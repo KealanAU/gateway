@@ -1276,14 +1276,30 @@ func TestNoMatchRuleMatchesExplicitSlashPriority(t *testing.T) {
 	}
 }
 
-func TestBackendTimeoutMs(t *testing.T) {
+func TestRouteTimeoutMs(t *testing.T) {
 	tests := []struct {
 		name     string
 		timeouts *gatewayv1.HTTPRouteTimeouts
 		want     int
 	}{
 		{"nil timeouts", nil, 0},
-		{"no backendRequest", &gatewayv1.HTTPRouteTimeouts{Request: ptr(gatewayv1.Duration("5s"))}, 0},
+		// request aliases backendRequest: Varnish has no total-request timeout.
+		{"request only", &gatewayv1.HTTPRouteTimeouts{Request: ptr(gatewayv1.Duration("5s"))}, 5000},
+		{"request disabled", &gatewayv1.HTTPRouteTimeouts{Request: ptr(gatewayv1.Duration("0s"))}, 0},
+		{"both set, backendRequest tighter", &gatewayv1.HTTPRouteTimeouts{
+			Request:        ptr(gatewayv1.Duration("5s")),
+			BackendRequest: ptr(gatewayv1.Duration("500ms")),
+		}, 500},
+		// The spec requires backendRequest <= request. A route that violates it
+		// must still get the tighter bound, not the looser one.
+		{"both set, request tighter", &gatewayv1.HTTPRouteTimeouts{
+			Request:        ptr(gatewayv1.Duration("1s")),
+			BackendRequest: ptr(gatewayv1.Duration("30s")),
+		}, 1000},
+		{"request set, backendRequest disabled", &gatewayv1.HTTPRouteTimeouts{
+			Request:        ptr(gatewayv1.Duration("2s")),
+			BackendRequest: ptr(gatewayv1.Duration("0s")),
+		}, 2000},
 		{"sub-second", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("500ms"))}, 500},
 		{"whole seconds", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("3s"))}, 3000},
 		{"compound", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("1m30s"))}, 90000},
@@ -1298,8 +1314,8 @@ func TestBackendTimeoutMs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := backendTimeoutMs(tt.timeouts); got != tt.want {
-				t.Errorf("backendTimeoutMs() = %d, want %d", got, tt.want)
+			if got := routeTimeoutMs(tt.timeouts); got != tt.want {
+				t.Errorf("routeTimeoutMs() = %d, want %d", got, tt.want)
 			}
 		})
 	}

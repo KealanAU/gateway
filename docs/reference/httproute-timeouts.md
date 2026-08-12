@@ -24,6 +24,17 @@ spec:
 
 A route whose backend exceeds the timeout returns **504 Gateway Timeout**.
 
+## `request` and `backendRequest`
+
+| Field | Gateway API scope | Varnish behaviour |
+|---|---|---|
+| `backendRequest` | Gateway sends request headers → complete response received | `first_byte_timeout` + `between_bytes_timeout` |
+| `request` | Client request received → response fully sent | Same as `backendRequest` |
+
+Varnish has no total-request timeout, so `request` is applied as an alias for
+`backendRequest`. When both are set the tighter value wins — normally
+`backendRequest`, since the spec requires it to be no larger than `request`.
+
 ## How it maps to Varnish
 
 Varnish backends are pooled by `address:port`, so they cannot carry per-route
@@ -46,6 +57,11 @@ reason in `vcl_backend_error`, so a refused connection on a route with
 `backendRequest` set also returns 504 rather than 503. Routes without a timeout
 are unaffected and keep 503.
 
+**The clock starts at the backend fetch.** `request` is documented by Gateway API
+as covering the whole client request-response cycle. Varnish has no equivalent
+cap, so time spent reading the client request body or streaming the response back
+to a slow client is not counted, and there is no bound on total request duration.
+
 **Connect time is not bounded.** The timeout governs waiting for response bytes.
 Establishing the TCP connection is governed by varnishd's `connect_timeout`
 (3.5s by default), so an unreachable pod can take longer than `backendRequest`
@@ -64,7 +80,8 @@ headers are sent.
 **`0s` falls back to varnishd defaults.** Gateway API defines `0s` as "disable
 the timeout". Varnish always applies `first_byte_timeout` /
 `between_bytes_timeout`, so a disabled route inherits the global varnishd values
-(60s each by default) rather than running unbounded.
+(60s each by default) rather than running unbounded. Setting only one of the two
+fields to `0s` leaves the other in force.
 
 **No retries.** A timed-out fetch fails immediately; Varnish only retries when
 VCL calls `return (retry)`.
