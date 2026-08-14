@@ -784,22 +784,22 @@ func TestGenerateBackendTimeoutPassthrough(t *testing.T) {
 			"api.example.com": {
 				Routes: []Route{
 					{
-						PathMatch:        &PathMatch{Type: PathMatchPathPrefix, Value: "/timed"},
-						Service:          "api-v1",
-						Namespace:        "default",
-						Port:             8080,
-						Weight:           50,
-						Priority:         10300,
-						BackendTimeoutMs: 500,
+						PathMatch: &PathMatch{Type: PathMatchPathPrefix, Value: "/timed"},
+						Service:   "api-v1",
+						Namespace: "default",
+						Port:      8080,
+						Weight:    50,
+						Priority:  10300,
+						TimeoutMs: 500,
 					},
 					{
-						PathMatch:        &PathMatch{Type: PathMatchPathPrefix, Value: "/timed"},
-						Service:          "api-v2",
-						Namespace:        "default",
-						Port:             8080,
-						Weight:           50,
-						Priority:         10300,
-						BackendTimeoutMs: 500,
+						PathMatch: &PathMatch{Type: PathMatchPathPrefix, Value: "/timed"},
+						Service:   "api-v2",
+						Namespace: "default",
+						Port:      8080,
+						Weight:    50,
+						Priority:  10300,
+						TimeoutMs: 500,
 					},
 					{
 						PathMatch: &PathMatch{Type: PathMatchPathPrefix, Value: "/untimed"},
@@ -830,13 +830,13 @@ func TestGenerateBackendTimeoutPassthrough(t *testing.T) {
 	}
 
 	timed := byPath["/timed"]
-	if timed.BackendTimeoutMs != 500 {
-		t.Errorf("/timed: BackendTimeoutMs = %d, want 500", timed.BackendTimeoutMs)
+	if timed.TimeoutMs != 500 {
+		t.Errorf("/timed: TimeoutMs = %d, want 500", timed.TimeoutMs)
 	}
 	if len(timed.BackendGroups) != 2 {
 		t.Errorf("/timed: expected 2 weighted groups, got %d", len(timed.BackendGroups))
 	}
-	if got := byPath["/untimed"].BackendTimeoutMs; got != 0 {
-		t.Errorf("/untimed: BackendTimeoutMs = %d, want 0", got)
+	if got := byPath["/untimed"].TimeoutMs; got != 0 {
+		t.Errorf("/untimed: TimeoutMs = %d, want 0", got)
 	}
 }

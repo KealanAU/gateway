@@ -31,9 +31,9 @@ A route whose backend exceeds the timeout returns **504 Gateway Timeout**.
 | `backendRequest` | Gateway sends request headers → complete response received | `first_byte_timeout` + `between_bytes_timeout` |
 | `request` | Client request received → response fully sent | Same as `backendRequest` |
 
-Varnish has no total-request timeout, so `request` is applied as an alias for
-`backendRequest`. When both are set the tighter value wins — normally
-`backendRequest`, since the spec requires it to be no larger than `request`.
+`request` is applied as an alias for `backendRequest`. When both are set the
+tighter value wins — normally `backendRequest`, since the spec requires it to be
+no larger than `request`.
 
 ## How it maps to Varnish
 
@@ -46,10 +46,6 @@ routing.json → ghost.json → ghost sets X-Ghost-Timeout on the request
   → vcl_backend_error reports 504 instead of 503
 ```
 
-`backendRequest` is scoped by Gateway API to the *complete* response, but Varnish
-has no total-fetch cap. `between_bytes_timeout` is the closest equivalent: it
-bounds the gap between response body bytes, not the total elapsed time.
-
 ## Caveats
 
 **Any fetch failure on a timeout route reports 504.** Varnish exposes no failure
@@ -57,10 +53,11 @@ reason in `vcl_backend_error`, so a refused connection on a route with
 `backendRequest` set also returns 504 rather than 503. Routes without a timeout
 are unaffected and keep 503.
 
-**The clock starts at the backend fetch.** `request` is documented by Gateway API
-as covering the whole client request-response cycle. Varnish has no equivalent
-cap, so time spent reading the client request body or streaming the response back
-to a slow client is not counted, and there is no bound on total request duration.
+**There is no total-request cap.** Gateway API scopes `request` to the whole
+client request-response cycle and `backendRequest` to the complete response, but
+Varnish has neither bound — the clock necessarily starts at the backend fetch, and
+time spent reading the client request body or streaming back to a slow client is
+not counted.
 
 **Connect time is not bounded.** The timeout governs waiting for response bytes.
 Establishing the TCP connection is governed by varnishd's `connect_timeout`
@@ -68,14 +65,11 @@ Establishing the TCP connection is governed by varnishd's `connect_timeout`
 to fail. Lower it globally via
 [varnishd arguments](varnishd-args.md) if that matters.
 
-**Streaming responses are cut.** `between_bytes_timeout` applies to every gap in
-the response body, so a long-lived SSE or streaming response on a route with a
-short `backendRequest` will be terminated. Do not set `backendRequest` on
-streaming routes.
-
-**Once headers are delivered, the status cannot change.** A timeout that fires
-mid-body truncates the response — the 504 flip only applies before response
-headers are sent.
+**Streaming responses are cut mid-body.** `between_bytes_timeout` bounds every
+gap between response body bytes, not the total elapsed time, so a long-lived SSE
+or streaming response on a route with a short `backendRequest` is terminated —
+and once headers are delivered the 504 flip no longer applies, so the client sees
+a truncated 200. Do not set `backendRequest` on streaming routes.
 
 **`0s` falls back to varnishd defaults.** Gateway API defines `0s` as "disable
 the timeout". Varnish always applies `first_byte_timeout` /

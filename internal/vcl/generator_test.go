@@ -1358,13 +1358,13 @@ func TestCollectHTTPRouteBackends_BackendTimeout(t *testing.T) {
 		if r.PathMatch == nil {
 			t.Fatalf("expected a path match on every route, got %+v", r)
 		}
-		got[r.PathMatch.Value] = r.BackendTimeoutMs
+		got[r.PathMatch.Value] = r.TimeoutMs
 	}
 
 	want := map[string]int{"/timed": 500, "/disabled": 0, "/untimed": 0}
 	for path, wantMs := range want {
 		if got[path] != wantMs {
-			t.Errorf("route %s: BackendTimeoutMs = %d, want %d", path, got[path], wantMs)
+			t.Errorf("route %s: TimeoutMs = %d, want %d", path, got[path], wantMs)
 		}
 	}
 

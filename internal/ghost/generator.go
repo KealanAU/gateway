@@ -118,7 +118,7 @@ func mergeRoutesByMatchCriteria(routes []Route, endpoints ServiceEndpoints) []Ro
 		ruleIndex   int
 		// In the key because RouteBackends takes it from the first route in the
 		// group — merging routes with different timeouts would silently drop one.
-		backendTimeoutMs int
+		timeoutMs int
 	}
 
 	// NOTE: BackendTLS is intentionally NOT part of the merge key. Each BackendGroup
@@ -139,8 +139,7 @@ func mergeRoutesByMatchCriteria(routes []Route, endpoints ServiceEndpoints) []Ro
 			cachePolicy: serializeCachePolicy(route.CachePolicy),
 			priority:    route.Priority,
 			ruleIndex:   route.RuleIndex,
-
-			backendTimeoutMs: route.BackendTimeoutMs,
+			timeoutMs:   route.TimeoutMs,
 		}
 		grouped[key] = append(grouped[key], route)
 	}
@@ -171,8 +170,7 @@ func mergeRoutesByMatchCriteria(routes []Route, endpoints ServiceEndpoints) []Ro
 			Priority:      key.priority,
 			RuleIndex:     key.ruleIndex,
 			CachePolicy:   firstRoute.CachePolicy,
-
-			BackendTimeoutMs: key.backendTimeoutMs,
+			TimeoutMs:     key.timeoutMs,
 		})
 	}
 
