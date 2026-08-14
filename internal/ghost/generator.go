@@ -118,7 +118,7 @@ func mergeRoutesByMatchCriteria(routes []Route, endpoints ServiceEndpoints) []Ro
 		ruleIndex   int
 		// In the key because RouteBackends takes it from the first route in the
 		// group — merging routes with different timeouts would silently drop one.
-		timeoutMs int
+		backendTimeoutMs int
 	}
 
 	// NOTE: BackendTLS is intentionally NOT part of the merge key. Each BackendGroup
@@ -130,16 +130,16 @@ func mergeRoutesByMatchCriteria(routes []Route, endpoints ServiceEndpoints) []Ro
 	grouped := make(map[routeKey][]Route)
 	for _, route := range routes {
 		key := routeKey{
-			pathMatch:   serializePathMatch(route.PathMatch),
-			method:      serializeMethod(route.Method),
-			headers:     serializeHeaders(route.Headers),
-			queryParams: serializeQueryParams(route.QueryParams),
-			filters:     serializeFilters(route.Filters),
-			listeners:   serializeListeners(route.Listeners),
-			cachePolicy: serializeCachePolicy(route.CachePolicy),
-			priority:    route.Priority,
-			ruleIndex:   route.RuleIndex,
-			timeoutMs:   route.TimeoutMs,
+			pathMatch:        serializePathMatch(route.PathMatch),
+			method:           serializeMethod(route.Method),
+			headers:          serializeHeaders(route.Headers),
+			queryParams:      serializeQueryParams(route.QueryParams),
+			filters:          serializeFilters(route.Filters),
+			listeners:        serializeListeners(route.Listeners),
+			cachePolicy:      serializeCachePolicy(route.CachePolicy),
+			priority:         route.Priority,
+			ruleIndex:        route.RuleIndex,
+			backendTimeoutMs: route.BackendTimeoutMs,
 		}
 		grouped[key] = append(grouped[key], route)
 	}
@@ -159,18 +159,18 @@ func mergeRoutesByMatchCriteria(routes []Route, endpoints ServiceEndpoints) []Ro
 		// Use the first route's match criteria (all routes in group have identical criteria)
 		firstRoute := routeGroup[0]
 		result = append(result, RouteBackends{
-			PathMatch:     firstRoute.PathMatch,
-			Method:        firstRoute.Method,
-			Headers:       firstRoute.Headers,
-			QueryParams:   firstRoute.QueryParams,
-			Filters:       firstRoute.Filters,
-			BackendGroups: groups,
-			Listeners:     firstRoute.Listeners,
-			RouteName:     firstRoute.RouteName,
-			Priority:      key.priority,
-			RuleIndex:     key.ruleIndex,
-			CachePolicy:   firstRoute.CachePolicy,
-			TimeoutMs:     key.timeoutMs,
+			PathMatch:        firstRoute.PathMatch,
+			Method:           firstRoute.Method,
+			Headers:          firstRoute.Headers,
+			QueryParams:      firstRoute.QueryParams,
+			Filters:          firstRoute.Filters,
+			BackendGroups:    groups,
+			Listeners:        firstRoute.Listeners,
+			RouteName:        firstRoute.RouteName,
+			Priority:         key.priority,
+			RuleIndex:        key.ruleIndex,
+			CachePolicy:      firstRoute.CachePolicy,
+			BackendTimeoutMs: key.backendTimeoutMs,
 		})
 	}
 

@@ -1290,7 +1290,7 @@ func TestNoMatchRuleMatchesExplicitSlashPriority(t *testing.T) {
 	}
 }
 
-func TestRouteTimeoutMs(t *testing.T) {
+func TestRouteBackendTimeoutMs(t *testing.T) {
 	tests := []struct {
 		name     string
 		timeouts *gatewayv1.HTTPRouteTimeouts
@@ -1321,8 +1321,8 @@ func TestRouteTimeoutMs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := routeTimeoutMs(tt.timeouts); got != tt.want {
-				t.Errorf("routeTimeoutMs() = %d, want %d", got, tt.want)
+			if got := routeBackendTimeoutMs(tt.timeouts); got != tt.want {
+				t.Errorf("routeBackendTimeoutMs() = %d, want %d", got, tt.want)
 			}
 		})
 	}
@@ -1374,13 +1374,13 @@ func TestCollectHTTPRouteBackends_BackendTimeout(t *testing.T) {
 		if r.PathMatch == nil {
 			t.Fatalf("expected a path match on every route, got %+v", r)
 		}
-		got[r.PathMatch.Value] = r.TimeoutMs
+		got[r.PathMatch.Value] = r.BackendTimeoutMs
 	}
 
 	want := map[string]int{"/timed": 500, "/disabled": 0, "/untimed": 0}
 	for path, wantMs := range want {
 		if got[path] != wantMs {
-			t.Errorf("route %s: TimeoutMs = %d, want %d", path, got[path], wantMs)
+			t.Errorf("route %s: BackendTimeoutMs = %d, want %d", path, got[path], wantMs)
 		}
 	}
 
@@ -1450,12 +1450,12 @@ func TestCollectHTTPRouteBackends_TimeoutOnBackendlessRoutes(t *testing.T) {
 		if r.Service != "" {
 			t.Fatalf("expected backendless routes only, got service %q", r.Service)
 		}
-		got[r.RuleName] = r.TimeoutMs
+		got[r.RuleName] = r.BackendTimeoutMs
 	}
 
 	for _, name := range []string{"no-match-filter", "no-match-bad-backend", "match-filter"} {
 		if got[name] != 2000 {
-			t.Errorf("rule %s: TimeoutMs = %d, want 2000", name, got[name])
+			t.Errorf("rule %s: BackendTimeoutMs = %d, want 2000", name, got[name])
 		}
 	}
 }
