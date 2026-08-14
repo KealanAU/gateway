@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **HTTPRoute `timeouts.backendRequest` and `timeouts.request`.** A rule's
+  timeout is carried through routing.json to ghost, which bridges it onto the
+  fetch (`connect_timeout`, `first_byte_timeout`, `between_bytes_timeout`);
+  exceeding it returns 504 instead of Varnish's 503. `request` is applied as an
+  alias for `backendRequest` — when both are set the tighter value wins. `0s`
+  ("disable") falls back to varnishd's global defaults rather than running
+  unbounded. Both conformance features are now declared.
 - **`GatewayPort8080` conformance support (#30).** The multi-listener
   architecture already mapped listener ports straight through to Service and
   container ports, so the feature is now declared in the conformance suite.
