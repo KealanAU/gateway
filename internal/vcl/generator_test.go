@@ -101,10 +101,8 @@ func TestGenerate_GhostReloadHandler(t *testing.T) {
 		t.Error("expected vcl_recv to return synth(500) on failed reload")
 	}
 
-	// Should NOT have vcl_backend_error. Reload errors are surfaced from vcl_recv,
-	// and the preamble runs BEFORE user VCL — a return here would stop user VCL
-	// from ever running. The 504 timeout flip lives in the postamble instead,
-	// which runs after user VCL. See TestMergePostambleBackendError.
+	// The preamble runs BEFORE user VCL, so a return here would stop user VCL from
+	// ever running. The 504 flip lives in the postamble instead.
 	if strings.Contains(result, "sub vcl_backend_error {") {
 		t.Error("should not have vcl_backend_error in the preamble (see postamble.vcl)")
 	}
@@ -1283,15 +1281,12 @@ func TestRouteTimeoutMs(t *testing.T) {
 		want     int
 	}{
 		{"nil timeouts", nil, 0},
-		// request aliases backendRequest: Varnish has no total-request timeout.
 		{"request only", &gatewayv1.HTTPRouteTimeouts{Request: ptr(gatewayv1.Duration("5s"))}, 5000},
 		{"request disabled", &gatewayv1.HTTPRouteTimeouts{Request: ptr(gatewayv1.Duration("0s"))}, 0},
 		{"both set, backendRequest tighter", &gatewayv1.HTTPRouteTimeouts{
 			Request:        ptr(gatewayv1.Duration("5s")),
 			BackendRequest: ptr(gatewayv1.Duration("500ms")),
 		}, 500},
-		// The spec requires backendRequest <= request. A route that violates it
-		// must still get the tighter bound, not the looser one.
 		{"both set, request tighter", &gatewayv1.HTTPRouteTimeouts{
 			Request:        ptr(gatewayv1.Duration("1s")),
 			BackendRequest: ptr(gatewayv1.Duration("30s")),
@@ -1303,11 +1298,7 @@ func TestRouteTimeoutMs(t *testing.T) {
 		{"sub-second", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("500ms"))}, 500},
 		{"whole seconds", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("3s"))}, 3000},
 		{"compound", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("1m30s"))}, 90000},
-		// Gateway API "0s" disables the timeout. Varnish cannot uncap a fetch, so
-		// it is emitted as absent and inherits varnishd's global defaults.
 		{"zero disables", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("0s"))}, 0},
-		// A malformed value must never become 0 in a way that reaches VCL as a
-		// real timeout — it degrades to "no per-route timeout".
 		{"unparseable", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("banana"))}, 0},
 		{"negative", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("-5s"))}, 0},
 	}
@@ -1377,8 +1368,7 @@ func TestCollectHTTPRouteBackends_BackendTimeout(t *testing.T) {
 		}
 	}
 
-	// 0 must serialize as absent so ghost sees no per-route timeout at all,
-	// rather than a literal 0 it would bridge into bereq.first_byte_timeout.
+	// 0 must serialize as absent, not as a literal 0 ghost would bridge into bereq.
 	for _, r := range collectedRoutes {
 		if r.PathMatch.Value != "/disabled" {
 			continue

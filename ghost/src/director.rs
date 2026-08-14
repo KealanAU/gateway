@@ -202,8 +202,7 @@ pub struct RouteEntry {
     pub cache_policy: Option<crate::config::CachePolicy>,
     /// Pre-compiled bypass header rules (extracted from cache_policy at config load time).
     pub bypass_headers: Vec<BypassHeaderCompiled>,
-    /// HTTPRoute `timeouts.backendRequest` in milliseconds, bridged to bereq via
-    /// the X-Ghost-Timeout header. None means varnishd's global defaults apply.
+    /// Effective route timeout in milliseconds, bridged to bereq via X-Ghost-Timeout.
     pub backend_timeout_ms: Option<u32>,
 }
 

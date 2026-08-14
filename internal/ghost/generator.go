@@ -116,9 +116,8 @@ func mergeRoutesByMatchCriteria(routes []Route, endpoints ServiceEndpoints) []Ro
 		cachePolicy string // JSON serialization of CachePolicy
 		priority    int
 		ruleIndex   int
-		// Keyed for the same reason as cachePolicy: it is a per-route attribute
-		// that RouteBackends takes from the first route in the group, so merging
-		// routes with different timeouts would silently drop one.
+		// In the key because RouteBackends takes it from the first route in the
+		// group — merging routes with different timeouts would silently drop one.
 		backendTimeoutMs int
 	}
 
