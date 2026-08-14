@@ -28,7 +28,7 @@ A route whose backend exceeds the timeout returns **504 Gateway Timeout**.
 
 | Field | Gateway API scope | Varnish behaviour |
 |---|---|---|
-| `backendRequest` | Gateway sends request headers → complete response received | `first_byte_timeout` + `between_bytes_timeout` |
+| `backendRequest` | Gateway sends request headers → complete response received | `connect_timeout` + `first_byte_timeout` + `between_bytes_timeout` |
 | `request` | Client request received → response fully sent | Same as `backendRequest` |
 
 `request` is applied as an alias for `backendRequest`. When both are set the
@@ -42,9 +42,17 @@ timeouts. Ghost bridges the value on the matched route to the fetch instead:
 
 ```
 routing.json → ghost.json → ghost sets X-Ghost-Timeout on the request
-  → vcl_backend_fetch sets bereq.first_byte_timeout + bereq.between_bytes_timeout
+  → vcl_backend_fetch sets bereq.connect_timeout + bereq.first_byte_timeout
+    + bereq.between_bytes_timeout
   → vcl_backend_error reports 504 instead of 503
 ```
+
+All three are set to the same value, so the route's budget bounds establishing the
+connection as well as waiting for bytes. Gateway API scopes `backendRequest` to
+after request headers are sent, but the bound users actually want is their own
+wall-clock wait. A route with a tight timeout to an off-cluster backend
+(ExternalName, or one using TLS) must complete the TCP and TLS handshake inside
+that budget.
 
 ## Caveats
 
@@ -59,12 +67,6 @@ Varnish has neither bound — the clock necessarily starts at the backend fetch,
 time spent reading the client request body or streaming back to a slow client is
 not counted.
 
-**Connect time is not bounded.** The timeout governs waiting for response bytes.
-Establishing the TCP connection is governed by varnishd's `connect_timeout`
-(3.5s by default), so an unreachable pod can take longer than `backendRequest`
-to fail. Lower it globally via
-[varnishd arguments](varnishd-args.md) if that matters.
-
 **Streaming responses are cut mid-body.** `between_bytes_timeout` bounds every
 gap between response body bytes, not the total elapsed time, so a long-lived SSE
 or streaming response on a route with a short `backendRequest` is terminated —
@@ -72,10 +74,10 @@ and once headers are delivered the 504 flip no longer applies, so the client see
 a truncated 200. Do not set `backendRequest` on streaming routes.
 
 **`0s` falls back to varnishd defaults.** Gateway API defines `0s` as "disable
-the timeout". Varnish always applies `first_byte_timeout` /
-`between_bytes_timeout`, so a disabled route inherits the global varnishd values
-(60s each by default) rather than running unbounded. Setting only one of the two
-fields to `0s` leaves the other in force.
+the timeout". Varnish always applies its fetch timeouts, so a disabled route
+inherits the global varnishd values (`connect_timeout` 3.5s, `first_byte_timeout`
+and `between_bytes_timeout` 60s each) rather than running unbounded. Setting only
+one of the two fields to `0s` leaves the other in force.
 
 **No retries.** A timed-out fetch fails immediately; Varnish only retries when
 VCL calls `return (retry)`.
