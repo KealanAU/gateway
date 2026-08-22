@@ -1319,6 +1319,19 @@ func TestRouteBackendTimeoutMs(t *testing.T) {
 		{"zero disables", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("0s"))}, 0},
 		{"unparseable", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("banana"))}, 0},
 		{"negative", &gatewayv1.HTTPRouteTimeouts{BackendRequest: ptr(gatewayv1.Duration("-5s"))}, 0},
+		// The GEP-2257 pattern permits durations past ghost's u32 backend_timeout_ms.
+		// 1193h is the last hour that still fits; 1194h saturates instead of
+		// overflowing, which would fail the whole ghost.json parse.
+		{"just under the u32 ceiling", &gatewayv1.HTTPRouteTimeouts{
+			BackendRequest: ptr(gatewayv1.Duration("1193h")),
+		}, 4294800000},
+		{"saturates past the u32 ceiling", &gatewayv1.HTTPRouteTimeouts{
+			BackendRequest: ptr(gatewayv1.Duration("1194h")),
+		}, maxTimeoutMs},
+		{"saturated request still loses to a tighter backendRequest", &gatewayv1.HTTPRouteTimeouts{
+			Request:        ptr(gatewayv1.Duration("99999h")),
+			BackendRequest: ptr(gatewayv1.Duration("500ms")),
+		}, 500},
 	}
 
 	for _, tt := range tests {

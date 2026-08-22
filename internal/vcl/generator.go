@@ -3,6 +3,7 @@ package vcl
 import (
 	_ "embed"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -469,13 +470,22 @@ func routeBackendTimeoutMs(t *gatewayv1.HTTPRouteTimeouts) int {
 	return ms
 }
 
+// maxTimeoutMs is the largest value ghost can represent: backend_timeout_ms
+// deserializes into a u32, so anything past this fails to parse. Roughly 49.7 days.
+const maxTimeoutMs = math.MaxUint32
+
 // durationMs parses a GEP-2257 duration into milliseconds. Returns 0 when unset,
-// unparseable, or "0s".
+// unparseable, or "0s", and saturates at maxTimeoutMs.
 //
 // Gateway API defines "0s" as "disable the timeout". Varnish has no way to uncap
 // a fetch — first_byte_timeout/between_bytes_timeout always apply — so a disabled
 // route is emitted as absent and inherits varnishd's global defaults rather than
 // running unbounded.
+//
+// The GEP-2257 pattern allows up to four 5-digit components, so a CRD-valid
+// duration ("2000h") can exceed ghost's u32. Saturating keeps that route absurd
+// but harmless; letting it through would fail the whole ghost.json parse and
+// freeze routing updates for every route on the gateway, not just this one.
 func durationMs(d *gatewayv1.Duration) int {
 	if d == nil {
 		return 0
@@ -485,7 +495,11 @@ func durationMs(d *gatewayv1.Duration) int {
 	if err != nil || parsed <= 0 {
 		return 0
 	}
-	return int(parsed.Milliseconds())
+	ms := parsed.Milliseconds()
+	if ms > maxTimeoutMs {
+		return maxTimeoutMs
+	}
+	return int(ms)
 }
 
 // filterValidBackends returns backend refs that have a valid Kind/Group and are not blocked.
