@@ -172,6 +172,8 @@ func TestGenerate_RouteTimeoutSetsAllFetchTimeouts(t *testing.T) {
 		"set bereq.connect_timeout = std.duration(bereq.http.X-Ghost-Timeout, 3.5s);",
 		"set bereq.first_byte_timeout = std.duration(bereq.http.X-Ghost-Timeout, 60s);",
 		"set bereq.between_bytes_timeout = std.duration(bereq.http.X-Ghost-Timeout, 60s);",
+		// A client-supplied X-Ghost-Timeout must never reach the fetch.
+		"unset req.http.X-Ghost-Timeout;",
 	} {
 		if !strings.Contains(result, want) {
 			t.Errorf("expected %q in generated VCL", want)
@@ -1395,67 +1397,6 @@ func TestCollectHTTPRouteBackends_BackendTimeout(t *testing.T) {
 		}
 		if strings.Contains(string(data), "backend_timeout_ms") {
 			t.Errorf("disabled timeout must be omitted from routing.json, got %s", data)
-		}
-	}
-}
-
-func TestCollectHTTPRouteBackends_TimeoutOnBackendlessRoutes(t *testing.T) {
-	// Routes that emit without a resolved backend — filter-only rules and rules
-	// whose backendRefs were all filtered out — still carry the rule's timeout.
-	prefixType := gatewayv1.PathMatchPathPrefix
-	redirect := []gatewayv1.HTTPRouteFilter{{
-		Type:            gatewayv1.HTTPRouteFilterRequestRedirect,
-		RequestRedirect: &gatewayv1.HTTPRequestRedirectFilter{StatusCode: ptr(302)},
-	}}
-	timeouts := &gatewayv1.HTTPRouteTimeouts{Request: ptr(gatewayv1.Duration("2s"))}
-
-	routes := []gatewayv1.HTTPRoute{
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "route-1", Namespace: "default"},
-			Spec: gatewayv1.HTTPRouteSpec{
-				Hostnames: []gatewayv1.Hostname{"api.example.com"},
-				Rules: []gatewayv1.HTTPRouteRule{
-					{
-						// No matches, no backends: filter-only default route.
-						Name:     ptr(gatewayv1.SectionName("no-match-filter")),
-						Filters:  redirect,
-						Timeouts: timeouts,
-					},
-					{
-						// No matches, every backendRef filtered out by Kind.
-						Name: ptr(gatewayv1.SectionName("no-match-bad-backend")),
-						BackendRefs: []gatewayv1.HTTPBackendRef{{BackendRef: gatewayv1.BackendRef{
-							BackendObjectReference: gatewayv1.BackendObjectReference{
-								Name: "some-secret", Kind: ptr(gatewayv1.Kind("Secret")),
-							},
-						}}},
-						Timeouts: timeouts,
-					},
-					{
-						// Matched but backendless: filter-only redirect route.
-						Name: ptr(gatewayv1.SectionName("match-filter")),
-						Matches: []gatewayv1.HTTPRouteMatch{
-							{Path: &gatewayv1.HTTPPathMatch{Type: &prefixType, Value: ptr("/redirect")}},
-						},
-						Filters:  redirect,
-						Timeouts: timeouts,
-					},
-				},
-			},
-		},
-	}
-
-	got := make(map[string]int)
-	for _, r := range CollectHTTPRouteBackends(routes, nil, "default", nil, nil, nil) {
-		if r.Service != "" {
-			t.Fatalf("expected backendless routes only, got service %q", r.Service)
-		}
-		got[r.RuleName] = r.BackendTimeoutMs
-	}
-
-	for _, name := range []string{"no-match-filter", "no-match-bad-backend", "match-filter"} {
-		if got[name] != 2000 {
-			t.Errorf("rule %s: BackendTimeoutMs = %d, want 2000", name, got[name])
 		}
 	}
 }

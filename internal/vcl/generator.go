@@ -155,9 +155,10 @@ func CollectHTTPRouteBackends(routes []gatewayv1.HTTPRoute, gateway *gatewayv1.G
 					ruleName = string(*rule.Name)
 				}
 
-				// Timeouts are per-rule, so every route entry generated from this
-				// rule carries the same value.
-				backendTimeoutMs := routeBackendTimeoutMs(rule.Timeouts)
+				// Timeouts are per-rule, so every route this rule emits carries the
+				// same value. Stamped once at the bottom of the loop rather than in
+				// each of the five struct literals below.
+				timeoutStart := len(collectedRoutes)
 
 				// Process each match in the rule
 				if len(rule.Matches) == 0 {
@@ -179,19 +180,18 @@ func CollectHTTPRouteBackends(routes []gatewayv1.HTTPRoute, gateway *gatewayv1.G
 					// Handle filter-only routes with no backends (e.g., redirects with no matches)
 					if len(rule.BackendRefs) == 0 && filters != nil {
 						collectedRoutes = append(collectedRoutes, ghost.Route{
-							Hostname:         hostname,
-							PathMatch:        pathMatch,
-							Filters:          filters,
-							Service:          "",
-							Namespace:        routeNS,
-							Port:             0,
-							Weight:           0,
-							Listeners:        listeners,
-							RouteName:        routeName,
-							RuleName:         ruleName,
-							Priority:         CalculateRoutePriority(pathMatch, nil, nil, nil),
-							RuleIndex:        ruleIndex,
-							BackendTimeoutMs: backendTimeoutMs,
+							Hostname:  hostname,
+							PathMatch: pathMatch,
+							Filters:   filters,
+							Service:   "",
+							Namespace: routeNS,
+							Port:      0,
+							Weight:    0,
+							Listeners: listeners,
+							RouteName: routeName,
+							RuleName:  ruleName,
+							Priority:  CalculateRoutePriority(pathMatch, nil, nil, nil),
+							RuleIndex: ruleIndex,
 						})
 					}
 
@@ -201,19 +201,18 @@ func CollectHTTPRouteBackends(routes []gatewayv1.HTTPRoute, gateway *gatewayv1.G
 					// If all backends were filtered, create a route with no backend (ghost returns 500)
 					if len(validNoMatchBackends) == 0 && len(rule.BackendRefs) > 0 {
 						collectedRoutes = append(collectedRoutes, ghost.Route{
-							Hostname:         hostname,
-							PathMatch:        pathMatch,
-							Filters:          filters,
-							Service:          "",
-							Namespace:        routeNS,
-							Port:             0,
-							Weight:           0,
-							Listeners:        listeners,
-							RouteName:        routeName,
-							RuleName:         ruleName,
-							Priority:         CalculateRoutePriority(pathMatch, nil, nil, nil),
-							RuleIndex:        ruleIndex,
-							BackendTimeoutMs: backendTimeoutMs,
+							Hostname:  hostname,
+							PathMatch: pathMatch,
+							Filters:   filters,
+							Service:   "",
+							Namespace: routeNS,
+							Port:      0,
+							Weight:    0,
+							Listeners: listeners,
+							RouteName: routeName,
+							RuleName:  ruleName,
+							Priority:  CalculateRoutePriority(pathMatch, nil, nil, nil),
+							RuleIndex: ruleIndex,
 						})
 					}
 
@@ -243,20 +242,19 @@ func CollectHTTPRouteBackends(routes []gatewayv1.HTTPRoute, gateway *gatewayv1.G
 						}
 
 						collectedRoutes = append(collectedRoutes, ghost.Route{
-							Hostname:         hostname,
-							PathMatch:        pathMatch,
-							Filters:          filters,
-							Service:          string(backend.Name),
-							Namespace:        backendNS,
-							Port:             port,
-							PortName:         portName,
-							Weight:           weight,
-							Listeners:        listeners,
-							RouteName:        routeName,
-							RuleName:         ruleName,
-							Priority:         CalculateRoutePriority(pathMatch, nil, nil, nil),
-							RuleIndex:        ruleIndex,
-							BackendTimeoutMs: backendTimeoutMs,
+							Hostname:  hostname,
+							PathMatch: pathMatch,
+							Filters:   filters,
+							Service:   string(backend.Name),
+							Namespace: backendNS,
+							Port:      port,
+							PortName:  portName,
+							Weight:    weight,
+							Listeners: listeners,
+							RouteName: routeName,
+							RuleName:  ruleName,
+							Priority:  CalculateRoutePriority(pathMatch, nil, nil, nil),
+							RuleIndex: ruleIndex,
 						})
 					}
 				} else {
@@ -349,22 +347,21 @@ func CollectHTTPRouteBackends(routes []gatewayv1.HTTPRoute, gateway *gatewayv1.G
 						if len(validBackendRefs) == 0 {
 							if filters != nil || len(rule.BackendRefs) > 0 {
 								collectedRoutes = append(collectedRoutes, ghost.Route{
-									Hostname:         hostname,
-									PathMatch:        pathMatch,
-									Method:           method,
-									Headers:          headers,
-									QueryParams:      queryParams,
-									Filters:          filters,
-									Service:          "",
-									Namespace:        routeNS,
-									Port:             0,
-									Weight:           0,
-									Listeners:        listeners,
-									RouteName:        routeName,
-									RuleName:         ruleName,
-									Priority:         CalculateRoutePriority(pathMatch, method, headers, queryParams),
-									RuleIndex:        ruleIndex,
-									BackendTimeoutMs: backendTimeoutMs,
+									Hostname:    hostname,
+									PathMatch:   pathMatch,
+									Method:      method,
+									Headers:     headers,
+									QueryParams: queryParams,
+									Filters:     filters,
+									Service:     "",
+									Namespace:   routeNS,
+									Port:        0,
+									Weight:      0,
+									Listeners:   listeners,
+									RouteName:   routeName,
+									RuleName:    ruleName,
+									Priority:    CalculateRoutePriority(pathMatch, method, headers, queryParams),
+									RuleIndex:   ruleIndex,
 								})
 							}
 						}
@@ -400,27 +397,32 @@ func CollectHTTPRouteBackends(routes []gatewayv1.HTTPRoute, gateway *gatewayv1.G
 							}
 
 							collectedRoutes = append(collectedRoutes, ghost.Route{
-								Hostname:         hostname,
-								PathMatch:        pathMatch,
-								Method:           method,
-								Headers:          headers,
-								QueryParams:      queryParams,
-								Filters:          filters,
-								Service:          string(backend.Name),
-								Namespace:        backendNS,
-								Port:             port,
-								PortName:         portName,
-								Weight:           weight,
-								Listeners:        listeners,
-								RouteName:        routeName,
-								RuleName:         ruleName,
-								Priority:         CalculateRoutePriority(pathMatch, method, headers, queryParams),
-								RuleIndex:        ruleIndex,
-								BackendTimeoutMs: backendTimeoutMs,
+								Hostname:    hostname,
+								PathMatch:   pathMatch,
+								Method:      method,
+								Headers:     headers,
+								QueryParams: queryParams,
+								Filters:     filters,
+								Service:     string(backend.Name),
+								Namespace:   backendNS,
+								Port:        port,
+								PortName:    portName,
+								Weight:      weight,
+								Listeners:   listeners,
+								RouteName:   routeName,
+								RuleName:    ruleName,
+								Priority:    CalculateRoutePriority(pathMatch, method, headers, queryParams),
+								RuleIndex:   ruleIndex,
 							})
 						}
 					}
 				}
+				if ms := routeBackendTimeoutMs(rule.Timeouts); ms != 0 {
+					for i := timeoutStart; i < len(collectedRoutes); i++ {
+						collectedRoutes[i].BackendTimeoutMs = ms
+					}
+				}
+
 				ruleIndex++
 			}
 		}

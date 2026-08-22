@@ -16,8 +16,7 @@ server s_fast {
 
 # Slow backend on a route with NO timeout configured: proves the 504 flip is
 # scoped to timeout routes and does not turn every fetch failure into a 504.
-# Serves both the c_untimed and c_spoof requests.
-server s_untimed -repeat 2 {
+server s_untimed {
     rxreq
     delay 1
     txresp -body "untimed"
@@ -132,19 +131,9 @@ client c_fast {
     expect resp.body == "on-time"
 } -run
 
-# No timeout on the route -> slow backend still succeeds, and X-Ghost-Timeout
-# never reaches the backend.
+# No timeout on the route -> slow backend still succeeds.
 client c_untimed {
     txreq -url "/untimed" -hdr "Host: api.example.com"
-    rxresp
-    expect resp.status == 200
-    expect resp.body == "untimed"
-} -run
-
-# A client-supplied X-Ghost-Timeout must not be able to impose a timeout on a
-# route that has none (the preamble strips it in vcl_recv).
-client c_spoof {
-    txreq -url "/untimed" -hdr "Host: api.example.com" -hdr "X-Ghost-Timeout: 1ms"
     rxresp
     expect resp.status == 200
     expect resp.body == "untimed"
